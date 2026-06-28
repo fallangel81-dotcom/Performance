@@ -37,11 +37,11 @@ CLASS zcl_pa_analyser IMPLEMENTATION.
   METHOD register_detectors.
     " Reihenfolge bestimmt die Verarbeitungsreihenfolge.
     " Neue Detektoren hier einfach ergänzen:
-    APPEND NEW zcl_pa_det_select_loop( ) TO mt_detectors.
-    APPEND NEW zcl_pa_det_full_scan( )   TO mt_detectors.
-    " APPEND NEW zcl_pa_det_high_runtime( ) TO mt_detectors.  " Phase 2
-    " APPEND NEW zcl_pa_det_duplicate( )    TO mt_detectors.  " Phase 2
-    " APPEND NEW zcl_pa_det_odata( )        TO mt_detectors.  " Phase 2
+    APPEND NEW zcl_pa_det_select_loop( )  TO mt_detectors.
+    APPEND NEW zcl_pa_det_full_scan( )    TO mt_detectors.
+    APPEND NEW zcl_pa_det_high_runtime( ) TO mt_detectors.
+    APPEND NEW zcl_pa_det_duplicate( )    TO mt_detectors.
+    APPEND NEW zcl_pa_det_odata( )        TO mt_detectors.
   ENDMETHOD.
 
 
