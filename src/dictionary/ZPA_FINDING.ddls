@@ -1,0 +1,57 @@
+@EndUserText.label : 'PA: Erkannte Performance-Findings'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AccessControl.authorizationCheck : #NOT_REQUIRED
+define table zpa_finding {
+
+  key mandt          : mandt not null;
+  key finding_id     : zpa_finding_id not null;       " UUID (RAW 16)
+
+  " Zuordnung
+  session_id         : zpa_session_id;                " Analyse-Sitzung
+  item_seq           : zpa_item_seq;                  " Bezug auf Trace-Satz (optional)
+
+  " Klassifikation
+  finding_type       : zpa_finding_type;              " SELECT_LOOP | FULL_SCAN | ...
+  kategorie          : zpa_kategorie;                 " DB_ACCESS | ABAP_LOGIK | ...
+  prioritaet         : zpa_prioritaet;                " KRITISCH | HOCH | MITTEL | ...
+  score              : zpa_score;                     " 0-100
+
+  " Fundstelle
+  programm           : ptc_program_name;              " ABAP-Programm
+  tabname            : tabname;                       " Tabelle oder CDS-View
+  @AbapCatalog.column.multitenancyType : #NONE
+  sql_kurzform       : string;                        " SQL-Statement (gekürzt)
+  sql_hash           : zpa_sql_hash;                  " Für Deduplizierung
+
+  " Messwerte
+  laufzeit_us        : zpa_laufzeit_us;               " Laufzeit des betroffenen Satzes
+  anzahl_exec        : zpa_anzahl;                    " Anzahl Ausführungen
+  datenmenge         : zpa_anzahl;                    " Betroffene Datensätze
+
+  " Bewertung (durch Analyse-Engine befüllt)
+  @AbapCatalog.column.multitenancyType : #NONE
+  technische_ursache : string;                        " Technische Erklärung
+  @AbapCatalog.column.multitenancyType : #NONE
+  fachliche_einsch   : string;                        " Fachliche Einschätzung
+  @AbapCatalog.column.multitenancyType : #NONE
+  empf_massnahme     : string;                        " Empfohlene Maßnahme
+  optim_hebel        : zpa_opt_hebel;                 " HOCH | MITTEL | NIEDRIG
+  is_custom_code     : zpa_boolean;                   " Z*/Y* Namensraum
+
+  " Aufrufhierarchie (JSON-String: Programm > Klasse > Methode)
+  @AbapCatalog.column.multitenancyType : #NONE
+  call_hierarchy     : string;
+
+  " Status
+  status             : char1;                         " O=Offen G=Gelöst I=Ignoriert
+  bearbeiter         : uname;
+  @AbapCatalog.column.multitenancyType : #NONE
+  notiz              : string;                        " Freitext-Kommentar
+
+  " Metadaten
+  erstellt_am        : dats;
+  erstellt_um        : tims;
+  erstellt_von       : uname;
+
+}

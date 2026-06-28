@@ -1,0 +1,42 @@
+@EndUserText.label : 'PA: Finding-Typen Katalog (Customizing)'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AccessControl.authorizationCheck : #NOT_REQUIRED
+define table zpa_finding_type {
+
+  key mandt          : mandt not null;
+  key finding_type   : zpa_finding_type not null;
+
+  beschreibung       : zpa_beschreibung;
+  kategorie          : zpa_kategorie;
+  basis_score        : zpa_score;                     " Basis-Bewertung 0-100
+  aktiv              : zpa_boolean;
+
+  " Schwellwerte (überschreiben globale Defaults aus ZPA_CONFIG)
+  schwelle_laufzeit  : zpa_laufzeit_us;               " Mindestlaufzeit für Meldung
+  schwelle_anzahl    : zpa_anzahl;                    " Mindestanzahl Ausführungen
+  schwelle_rows      : zpa_anzahl;                    " Mindest-Datensätze
+
+  @AbapCatalog.column.multitenancyType : #NONE
+  dokumentation      : string;                        " Detailbeschreibung / Hilfe
+  @AbapCatalog.column.multitenancyType : #NONE
+  massnahme_vorlage  : string;                        " Textbaustein für Maßnahme
+
+}
+
+"--------------------------------------------------------------------
+" Initialbefüllung (in SM30 / Datentransport pflegen)
+"--------------------------------------------------------------------
+" finding_type    | beschreibung                        | kategorie   | score | aktiv | schwelle_laufzeit | schwelle_anzahl
+" SELECT_LOOP     | SELECT-Statement in ABAP-Schleife   | ABAP_LOGIK  |  80   | X     | 0                 | 5
+" FULL_SCAN       | Full Table Scan ohne Index          | DB_ACCESS   |  75   | X     | 100000            | 0
+" NO_WHERE        | SELECT ohne WHERE-Bedingung         | DB_ACCESS   |  85   | X     | 0                 | 0
+" HIGH_RUNTIME    | Hohe Einzellaufzeit                 | DB_ACCESS   |  70   | X     | 2000000           | 0
+" EXPENSIVE_JOIN  | Teurer Multi-Table-JOIN             | DB_ACCESS   |  65   | X     | 500000            | 0
+" CDS_EXPENSIVE   | Teurer CDS-View-Zugriff             | CDS_ODATA   |  70   | X     | 1000000           | 0
+" LOW_SELECT      | Geringe Selektivität (<5%)          | ABAP_LOGIK  |  60   | X     | 0                 | 500
+" DUPLICATE_SQL   | Identisches SQL mehrfach            | ABAP_LOGIK  |  55   | X     | 0                 | 3
+" ODATA_SLOW      | OData/Gateway hohe Laufzeit         | CDS_ODATA   |  75   | X     | 2000000           | 0
+" RFC_SLOW        | RFC/BAPI hohe Laufzeit              | RFC_BAPI    |  70   | X     | 1000000           | 0
+" TIME_ANOMALY    | DB/ABAP-Zeitverhältnis auffällig    | ARCHITEKTUR |  40   | X     | 0                 | 0
+" CLUSTER_ACCESS  | Zugriff auf Cluster/Pool-Tabelle    | ARCHITEKTUR |  50   | X     | 0                 | 0

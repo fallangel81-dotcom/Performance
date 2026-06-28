@@ -1,0 +1,60 @@
+@EndUserText.label : 'PA: Importierte Trace-Einzelsätze'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AccessControl.authorizationCheck : #NOT_REQUIRED
+define table zpa_trace_item {
+
+  key mandt          : mandt not null;
+  key session_id     : zpa_session_id not null;
+  key item_seq       : zpa_item_seq not null;         " Laufende Nummer
+
+  " Herkunft des Satzes
+  data_source        : zpa_data_source;               " PTC_MAIN | PTC_VALUEID | ...
+
+  " SQL / Operation
+  stmt_type          : zpa_stmt_type;                 " SELECT | INSERT | SUMM_TAB | ...
+  tabname            : tabname;                       " Primäre Tabelle / CDS-View
+  @AbapCatalog.column.multitenancyType : #NONE
+  objects_raw        : string;                        " Volltext OBJECT-Feld (bei JOIN)
+  @AbapCatalog.column.multitenancyType : #NONE
+  sql_text           : string;                        " SQL statement_with_names
+  sql_hash           : zpa_sql_hash;                  " HANA Statement Hash
+
+  " Laufzeit – alle HANA-Dimensionen
+  laufzeit_us        : zpa_laufzeit_us;               " Gesamtlaufzeit µs (duration)
+  hana_proc_time_us  : zpa_laufzeit_us;               " HANA Verarbeitungszeit µs
+  hana_cpu_time_us   : zpa_laufzeit_us;               " HANA CPU-Zeit µs
+  hana_max_memory_kb : zpa_laufzeit_us;               " HANA Max-Speicher kB
+
+  " Datenmenge
+  records_fetched    : zpa_anzahl;                    " Gelesene Datensätze
+  array_size         : zpa_anzahl;                    " Array-Größe
+
+  " Aggregierte Werte (aus IDENTICAL_RECORD)
+  anzahl_exec        : zpa_anzahl;                    " Anzahl Ausführungen
+  avg_duration_us    : zpa_laufzeit_us;               " Ø Laufzeit je Ausführung
+  avg_rows           : zpa_anzahl;                    " Ø Rows je Ausführung
+
+  " Kontext
+  program_name       : ptc_program_name;              " ABAP-Programm (CHAR 40)
+  transaction        : ptc_transaction_code;          " Transaktionscode
+  user_name          : ptc_user_name;                 " Benutzer
+  wp_id              : ptc_wp_id;                     " Workprozess-ID
+  wp_type            : ptc_wp_type;                   " Workprozess-Typ
+  return_code        : st05_return_code;              " Rückkehrcode
+  epp_root_id        : ptc_epp_root_id;               " End-to-End-Kontext
+
+  " Tabelleninfo (aus IDENTICAL_RECORD)
+  buffer_type        : st05_object_buffer_type;       " SAP-Puffertyp
+  tabclass           : st05_object_type_;             " TRANSP | VIEW | CLUSTER | ...
+
+  " Metadaten
+  trace_date         : dats;                          " Datum des Traces
+  trace_time         : tims;                          " Uhrzeit des Traces
+  instance_nm        : ptc_instance_name;             " Applikationsserver
+
+  " Abgeleitete Felder (bei Import berechnet)
+  has_where          : zpa_boolean;                   " WHERE-Bedingung vorhanden
+  is_custom_code     : zpa_boolean;                   " Z* oder Y* Namensraum
+
+}

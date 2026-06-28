@@ -1,0 +1,33 @@
+@EndUserText.label : 'PA: Globale Konfiguration / Schwellwerte'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AccessControl.authorizationCheck : #NOT_REQUIRED
+define table zpa_config {
+
+  key mandt          : mandt not null;
+  key parameter      : zpa_config_param not null;     " CHAR 30
+
+  wert_num           : zpa_laufzeit_us;               " Numerischer Wert (INT8)
+  wert_dec           : p length 5 decimals 2;         " Dezimalwert (für Gewichte)
+  beschreibung       : zpa_beschreibung;
+
+}
+
+"--------------------------------------------------------------------
+" Initialbefüllung
+"--------------------------------------------------------------------
+" parameter              | wert_num    | wert_dec | beschreibung
+" RT_KRITISCH            | 10000000    |          | Schwelle KRITISCH µs (10 Sek)
+" RT_HOCH                |  2000000    |          | Schwelle HOCH µs (2 Sek)
+" RT_MITTEL              |   500000    |          | Schwelle MITTEL µs (0,5 Sek)
+" RT_NIEDRIG             |   100000    |          | Schwelle NIEDRIG µs (0,1 Sek)
+" LOOP_MIN_EXEC          |         5   |          | Mindest-Exec für Loop-Erkennung
+" FULLSCAN_MIN_ROWS      |     10000   |          | Mindest-Rows für Full-Scan
+" SELECTIVITY_MIN        |             |     0.05 | Mindest-Selektivität (5%)
+" DUPLICATE_MIN          |         3   |          | Mindest gleiche SQLs = Duplikat
+" SCORE_W_RUNTIME        |             |     0.35 | Gewicht Laufzeit im Score
+" SCORE_W_FREQUENCY      |             |     0.25 | Gewicht Häufigkeit
+" SCORE_W_DATAVOLUME     |             |     0.20 | Gewicht Datenmenge
+" SCORE_W_PATTERN        |             |     0.15 | Gewicht Pattern-Typ
+" SCORE_W_CUSTOM         |             |     0.05 | Bonus Custom-Code
+" MAX_TRACES_PER_RUN     |       100   |          | Max. Traces pro Analyselauf
