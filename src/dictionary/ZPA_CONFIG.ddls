@@ -4,18 +4,17 @@
 @AccessControl.authorizationCheck : #NOT_REQUIRED
 define table zpa_config {
 
-  key mandt          : mandt not null;
-  key parameter      : zpa_config_param not null;     " CHAR 30
+  key mandt      : mandt not null;
+  key parameter  : abap.char(30) not null;
 
-  wert_num           : zpa_laufzeit_us;               " Numerischer Wert (INT8)
-  wert_dec           : p length 5 decimals 2;         " Dezimalwert (für Gewichte)
-  beschreibung       : zpa_beschreibung;
+  wert_num       : abap.int8;                         " Numerischer Wert (µs, Anzahl)
+  wert_dec       : abap.dec(5,2);                     " Dezimalwert (Score-Gewichte)
+  beschreibung   : abap.char(80);
 
 }
 
 "--------------------------------------------------------------------
 " Initialbefüllung
-"--------------------------------------------------------------------
 " parameter              | wert_num    | wert_dec | beschreibung
 " RT_KRITISCH            | 10000000    |          | Schwelle KRITISCH µs (10 Sek)
 " RT_HOCH                |  2000000    |          | Schwelle HOCH µs (2 Sek)
@@ -31,3 +30,4 @@ define table zpa_config {
 " SCORE_W_PATTERN        |             |     0.15 | Gewicht Pattern-Typ
 " SCORE_W_CUSTOM         |             |     0.05 | Bonus Custom-Code
 " MAX_TRACES_PER_RUN     |       100   |          | Max. Traces pro Analyselauf
+"--------------------------------------------------------------------

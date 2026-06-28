@@ -5,56 +5,56 @@
 define table zpa_trace_item {
 
   key mandt          : mandt not null;
-  key session_id     : zpa_session_id not null;
-  key item_seq       : zpa_item_seq not null;         " Laufende Nummer
+  key session_id     : sysuuid_x16 not null;
+  key item_seq       : abap.int4 not null;            " Laufende Nummer
 
-  " Herkunft des Satzes
-  data_source        : zpa_data_source;               " PTC_MAIN | PTC_VALUEID | ...
+  " Herkunft
+  data_source        : abap.char(15);                 " PTC_MAIN | PTC_VALUEID | ...
 
   " SQL / Operation
-  stmt_type          : zpa_stmt_type;                 " SELECT | INSERT | SUMM_TAB | ...
+  stmt_type          : abap.char(12);                 " SELECT | INSERT | SUMM_TAB | ...
   tabname            : tabname;                       " Primäre Tabelle / CDS-View
   @AbapCatalog.column.multitenancyType : #NONE
-  objects_raw        : string;                        " Volltext OBJECT-Feld (bei JOIN)
+  objects_raw        : abap.string(0);                " Volltext OBJECT-Feld (JOIN)
   @AbapCatalog.column.multitenancyType : #NONE
-  sql_text           : string;                        " SQL statement_with_names
-  sql_hash           : zpa_sql_hash;                  " HANA Statement Hash
+  sql_text           : abap.string(0);                " SQL mit Feldnamen
+  sql_hash           : abap.char(32);                 " HANA Statement Hash
 
-  " Laufzeit – alle HANA-Dimensionen
-  laufzeit_us        : zpa_laufzeit_us;               " Gesamtlaufzeit µs (duration)
-  hana_proc_time_us  : zpa_laufzeit_us;               " HANA Verarbeitungszeit µs
-  hana_cpu_time_us   : zpa_laufzeit_us;               " HANA CPU-Zeit µs
-  hana_max_memory_kb : zpa_laufzeit_us;               " HANA Max-Speicher kB
+  " Laufzeit
+  laufzeit_us        : abap.int8;                     " Gesamtlaufzeit µs
+  hana_proc_time_us  : abap.int8;                     " HANA Verarbeitungszeit µs
+  hana_cpu_time_us   : abap.int8;                     " HANA CPU-Zeit µs
+  hana_max_memory_kb : abap.int8;                     " HANA Max-Speicher kB
 
   " Datenmenge
-  records_fetched    : zpa_anzahl;                    " Gelesene Datensätze
-  array_size         : zpa_anzahl;                    " Array-Größe
+  records_fetched    : abap.int4;                     " Gelesene Datensätze
+  array_size         : abap.int4;                     " Array-Größe
 
   " Aggregierte Werte (aus IDENTICAL_RECORD)
-  anzahl_exec        : zpa_anzahl;                    " Anzahl Ausführungen
-  avg_duration_us    : zpa_laufzeit_us;               " Ø Laufzeit je Ausführung
-  avg_rows           : zpa_anzahl;                    " Ø Rows je Ausführung
+  anzahl_exec        : abap.int4;                     " Anzahl Ausführungen
+  avg_duration_us    : abap.int8;                     " Ø Laufzeit je Ausführung µs
+  avg_rows           : abap.int4;                     " Ø Rows je Ausführung
 
   " Kontext
   program_name       : ptc_program_name;              " ABAP-Programm (CHAR 40)
   transaction        : ptc_transaction_code;          " Transaktionscode
   user_name          : ptc_user_name;                 " Benutzer
-  wp_id              : ptc_wp_id;                     " Workprozess-ID
-  wp_type            : ptc_wp_type;                   " Workprozess-Typ
-  return_code        : st05_return_code;              " Rückkehrcode
-  epp_root_id        : ptc_epp_root_id;               " End-to-End-Kontext
+  wp_id              : ptc_wp_id;
+  wp_type            : ptc_wp_type;
+  return_code        : abap.int4;
+  epp_root_id        : ptc_epp_root_id;
 
-  " Tabelleninfo (aus IDENTICAL_RECORD)
-  buffer_type        : st05_object_buffer_type;       " SAP-Puffertyp
+  " Tabelleninfo
+  buffer_type        : st05_object_buffer_type;
   tabclass           : st05_object_type_;             " TRANSP | VIEW | CLUSTER | ...
 
-  " Metadaten
-  trace_date         : dats;                          " Datum des Traces
-  trace_time         : tims;                          " Uhrzeit des Traces
-  instance_nm        : ptc_instance_name;             " Applikationsserver
+  " Zeitstempel des Traces
+  trace_date         : dats;
+  trace_time         : tims;
+  instance_nm        : ptc_instance_name;
 
-  " Abgeleitete Felder (bei Import berechnet)
-  has_where          : zpa_boolean;                   " WHERE-Bedingung vorhanden
-  is_custom_code     : zpa_boolean;                   " Z* oder Y* Namensraum
+  " Abgeleitete Felder
+  has_where          : abap_bool;
+  is_custom_code     : abap_bool;                     " Z* oder Y* Namensraum
 
 }

@@ -5,35 +5,37 @@
 define table zpa_trace_session {
 
   key mandt          : mandt not null;
-  key session_id     : zpa_session_id not null;       " UUID (RAW 16)
+  key session_id     : sysuuid_x16 not null;          " UUID
 
-  session_name       : zpa_session_name;              " Frei wählbarer Name
-  trace_source       : zpa_trace_source;              " PTC | HANA | STAD | FILE
+  session_name       : abap.char(80);                 " Frei wählbarer Name
+  trace_source       : abap.char(10);                 " PTC | HANA | STAD | FILE
   system_id          : sysid;
-  umgebung           : zpa_umgebung;                  " DEV | QAS | PRD
-  modul              : zpa_modul;                     " FI | MM | SD | ...
-  beschreibung       : zpa_beschreibung;
+  umgebung           : abap.char(5);                  " DEV | QAS | PRD
+  modul              : abap.char(20);                 " FI | MM | SD | ...
+  beschreibung       : abap.char(255);
 
-  " Zeitstempel
-  trace_date_from    : dats;                          " Startdatum des Traces
-  trace_time_from    : tims;                          " Startzeit des Traces
-  trace_date_to      : dats;                          " Enddatum
-  trace_time_to      : tims;                          " Endzeit
+  " Zeitraum des Traces
+  trace_date_from    : dats;
+  trace_time_from    : tims;
+  trace_date_to      : dats;
+  trace_time_to      : tims;
+
+  " Erfassung
   erfasst_am         : dats;
   erfasst_um         : tims;
   erfasst_von        : uname;
 
   " Aggregierte Kennzahlen (beim Import befüllt)
-  gesamt_laufzeit_us : zpa_laufzeit_us;               " Gesamtlaufzeit µs
-  db_laufzeit_us     : zpa_laufzeit_us;               " Reine DB-Zeit µs
-  anzahl_statements  : zpa_anzahl;                    " Anzahl SQL-Statements
-  anzahl_findings    : zpa_anzahl;                    " Anzahl erkannter Findings
+  gesamt_laufzeit_us : abap.int8;                     " Gesamtlaufzeit µs
+  db_laufzeit_us     : abap.int8;                     " Reine DB-Zeit µs
+  anzahl_statements  : abap.int4;                     " Anzahl SQL-Statements
+  anzahl_findings    : abap.int4;                     " Anzahl erkannter Findings
 
-  " Verknüpfung mit PTC_DIRECTORY (bei source=PTC)
+  " Verknüpfung mit PTC_DIRECTORY (bei source = PTC)
   ptc_guid           : ptc_directory_entry_guid;      " GUID aus PTC_DIRECTORY
   ptc_owner          : ptc_directory_entry_owner;     " Ersteller des ST05-Trace
   ptc_instance       : ptc_instance_name;
 
-  session_status     : char1;                         " N=Neu A=Analysiert F=Fertig
+  session_status     : abap.char(1);                  " N=Neu A=Analysiert F=Fertig
 
 }
