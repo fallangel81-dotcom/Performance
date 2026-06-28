@@ -2,12 +2,14 @@
 " ZCL_PA_SRC_PTC
 " Connector: Gesicherte ST05-Traces aus PTC_DIRECTORY lesen
 "
-" Voraussetzung: Trace wurde in ST05 mit "Sichern" (nicht Export)
-"               gespeichert → Eintrag in PTC_DIRECTORY vorhanden
+" Ablauf:
+"   1. PTC_DIRECTORY nach Selektionskriterien abfragen
+"   2. Je Eintrag: Filter präzise auf Owner/Instanz/Zeit setzen
+"   3. CL_PTC_M=>GET_MODEL + IMPORT_TRACE( source='DB' )
+"   4. Ergebnis auf ZPA_TRACE_ITEM mappen
 "
-" Offene Klärung: Wie GUID an CL_ST05_TRACE_DISPLAY_M übergeben wird
-"   → GET_MODEL-Parameter prüfen (vermutlich über CL_PTC_M-Basis)
-"   → Alternativ: SET_WP_TABLE oder eigene SET_GUID-Methode
+" Voraussetzung: Trace wurde in ST05 mit "Sichern" gespeichert
+"               (nicht "Exportieren")
 "--------------------------------------------------------------------
 CLASS zcl_pa_src_ptc DEFINITION
   PUBLIC FINAL CREATE PUBLIC
@@ -21,11 +23,10 @@ CLASS zcl_pa_src_ptc DEFINITION
   PRIVATE SECTION.
     DATA mv_trace_type TYPE st05_trace_type.
 
-    " Quelltypen für IMPORT_TRACE->source (CHAR2)
-    " Werte anhand ST05-Quellcode verifizieren (LPTC_APIU01 / LST05_INTU11)
-    CONSTANTS:
-      c_source_db   TYPE char2 VALUE 'DB',
-      c_source_file TYPE char2 VALUE 'FE'.
+    " source-Parameter von IMPORT_TRACE (CHAR2)
+    " 'DB' = aus PTC_DIRECTORY (gesicherter Trace)
+    " 'FE' = Front-End-Datei (manueller Upload – anderer Connector)
+    CONSTANTS c_source_db TYPE char2 VALUE 'DB'.
 
     METHODS load_directory
       IMPORTING
@@ -33,11 +34,17 @@ CLASS zcl_pa_src_ptc DEFINITION
       RETURNING
         VALUE(rt_dir) TYPE STANDARD TABLE OF ptc_directory.
 
+    METHODS build_filter
+      IMPORTING
+        is_dir        TYPE ptc_directory
+      RETURNING
+        VALUE(ro_filter) TYPE REF TO cl_st05_trace_filter_c.
+
     METHODS fetch_trace_records
       IMPORTING
-        is_dir_entry      TYPE ptc_directory
+        is_dir_entry   TYPE ptc_directory
       RETURNING
-        VALUE(rt_main)    TYPE st05_main_record_table
+        VALUE(rt_main) TYPE st05_main_record_table
       RAISING
         zcx_pa_import_error.
 
@@ -51,8 +58,7 @@ CLASS zcl_pa_src_ptc DEFINITION
 
     METHODS derive_tabname
       IMPORTING
-        iv_object      TYPE st05_objects   " STRING, ggf. mehrere Tabellen (JOIN)
-        iv_operation   TYPE st05_operation
+        iv_object      TYPE st05_objects
       RETURNING
         VALUE(rv_tab)  TYPE tabname.
 
@@ -70,31 +76,22 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
     mv_trace_type = iv_trace_type.
   ENDMETHOD.
 
-
   METHOD zif_pa_data_source~get_source_type.
     rv_type = 'PTC'.
   ENDMETHOD.
 
-
   METHOD zif_pa_data_source~fetch.
-    DATA lt_dir TYPE STANDARD TABLE OF ptc_directory.
-    lt_dir = load_directory( is_criteria ).
-
-    IF lt_dir IS INITIAL.
-      RETURN.
-    ENDIF.
+    DATA(lt_dir) = load_directory( is_criteria ).
+    CHECK lt_dir IS NOT INITIAL.
 
     LOOP AT lt_dir INTO DATA(ls_dir).
       TRY.
-          DATA(lt_main) = fetch_trace_records( ls_dir ).
-
           APPEND LINES OF map_to_trace_items(
-            it_main       = lt_main
+            it_main       = fetch_trace_records( ls_dir )
             iv_session_id = is_criteria-session_id
             is_dir_entry  = ls_dir ) TO rt_items.
 
         CATCH zcx_pa_import_error INTO DATA(lx).
-          " Einzelnen fehlerhaften Trace überspringen
           MESSAGE lx TYPE 'W'.
       ENDTRY.
     ENDLOOP.
@@ -102,8 +99,8 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
 
 
   METHOD load_directory.
-    " TYPE-Wert für ST05 SQL-Traces in SE16/PTC_DIRECTORY ermitteln
-    " Kandidaten: 'ST05', 'SQL', 'SQLT' – mit SE16 auf vorhandene Traces prüfen
+    " TYPE-Wert mit SE16 auf einem System mit gesicherten Traces prüfen:
+    " SELECT DISTINCT type FROM ptc_directory → zeigt reale Werte
     SELECT FROM ptc_directory
       FIELDS *
       WHERE mandt      =  sy-mandt
@@ -118,23 +115,69 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD build_filter.
+    " CL_ST05_TRACE_FILTER_C kapselt alle Filterbedingungen.
+    " Wir setzen den Filter so eng wie möglich auf genau einen
+    " PTC_DIRECTORY-Eintrag, damit IMPORT_TRACE exakt diesen lädt.
+    "
+    " Offene Klärung: genaue SET_*-Methoden von CL_ST05_TRACE_FILTER_C
+    " prüfen (SE24) – typische SAP-Muster:
+    "   SET_USER_RANGE / SET_TRACE_PERIOD / SET_INSTANCE
+    " Alternativ: direkte Attribut-Zuweisung falls kein SET_* vorhanden
+
+    CREATE OBJECT ro_filter.
+
+    " Zeitraum: genau der Startzeitpunkt des gesicherten Trace
+    " (Endzeit = Startzeit + kleines Delta, falls nötig)
+    ro_filter->set_trace_period(
+      i_date_from     = is_dir-start_date
+      i_time_from     = is_dir-start_time
+      i_date_to       = is_dir-start_date
+      i_time_to       = is_dir-start_time
+      i_instance_name = is_dir-instance_name ).
+
+    " Benutzer: Ersteller des gesicherten Trace
+    ro_filter->set_user_range(
+      i_username = is_dir-owner ).
+
+    " Trace-Typ: SQL / RFC / BUF / HTTP etc.
+    ro_filter->set_trace_types(
+      i_trace_types = mv_trace_type ).
+  ENDMETHOD.
+
+
   METHOD fetch_trace_records.
+    " 1. Modell via generischer Factory der Basisklasse erzeugen
+    DATA lo_ptc   TYPE REF TO cl_ptc_m.
     DATA lo_model TYPE REF TO cl_st05_trace_display_m.
 
-    " Modell erzeugen – GET_MODEL-Parameter mit SE24 prüfen:
-    " Vermutlich: GET_MODEL( i_guid = is_dir_entry-guid
-    "                        i_instance = is_dir_entry-instance_name )
-    " Fallback falls parameterlos: GUID wird via SET_* gesetzt
-    lo_model = cl_st05_trace_display_m=>get_model( ).
+    lo_ptc = cl_ptc_m=>get_model(
+      model_class_name = 'CL_ST05_TRACE_DISPLAY_M' ).
 
     TRY.
-        " record_number_table leer = alle Sätze laden
-        " Einzelne Sätze selektierbar via INT10-Nummern aus PTC_RECORD_NUMBER
-        DATA lt_rec_nr TYPE ptc_record_numbers.  " leer → kompletter Trace
+        lo_model ?= lo_ptc.
+      CATCH cx_sy_move_cast_error INTO DATA(lx_cast).
+        RAISE EXCEPTION TYPE zcx_pa_import_error
+          EXPORTING previous = lx_cast
+                    mv_info  = 'Downcast CL_PTC_M → CL_ST05_TRACE_DISPLAY_M fehlgeschlagen'.
+    ENDTRY.
+
+    TRY.
+        " 2. Filter präzise auf diesen PTC_DIRECTORY-Eintrag setzen
+        lo_model->set_filter( build_filter( is_dir_entry ) ).
+
+        " 3. Record-Prozessoren vorbereiten (interne SAP-Verarbeitung)
+        lo_model->set_record_processors( ).
+
+        " 4. Trace aus PTC_DIRECTORY laden
+        "    record_number_table leer = alle Sätze
+        "    source = 'DB'            = aus Datenbank (PTC_DIRECTORY.CONTENT)
+        DATA lt_rec_nr TYPE ptc_record_numbers.  " leer → alle Sätze
+
         rt_main = lo_model->import_trace(
-          source               = c_source_db
-          record_number_table  = lt_rec_nr
-          trace_type           = mv_trace_type ).
+          source              = c_source_db
+          record_number_table = lt_rec_nr
+          trace_type          = mv_trace_type ).
 
         lo_model->free_model( ).
 
@@ -143,7 +186,8 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
         RAISE EXCEPTION TYPE zcx_pa_import_error
           EXPORTING
             previous = lx
-            mv_info  = |GUID: { is_dir_entry-guid } – { lx->get_text( ) }|.
+            mv_info  = |Owner: { is_dir_entry-owner } | &&
+                       |{ is_dir_entry-start_date } { is_dir_entry-start_time }|.
     ENDTRY.
   ENDMETHOD.
 
@@ -153,82 +197,59 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
 
     LOOP AT it_main INTO DATA(ls_rec).
 
-      " SQL-Trace-Sätze filtern (BUF, RFC etc. separat behandeln)
-      CHECK ls_rec-trace_type = 'SQL ' OR ls_rec-trace_type = mv_trace_type.
+      " Nur den angefragten Trace-Typ verarbeiten
+      CHECK ls_rec-trace_type = mv_trace_type.
 
       DATA ls_item TYPE zpa_trace_item.
 
-      "-----------------------------------------------------------------
-      " Identifikation
-      "-----------------------------------------------------------------
+      " --- Identifikation ---
       ls_item-session_id   = iv_session_id.
       ls_item-item_seq     = lv_seq.
 
-      "-----------------------------------------------------------------
-      " Laufzeit – alle drei HANA-Dimensionen sichern
-      "-----------------------------------------------------------------
-      ls_item-laufzeit_us        = ls_rec-duration.              " Gesamtlaufzeit µs
-      ls_item-hana_proc_time_us  = ls_rec-hana_processing_time. " HANA-Verarbeitung µs
-      ls_item-hana_cpu_time_us   = ls_rec-hana_cpu_time.        " HANA-CPU µs
-      ls_item-hana_max_memory_kb = ls_rec-hana_max_memory.      " HANA Speicher kB
+      " --- Laufzeit (alle drei HANA-Dimensionen) ---
+      ls_item-laufzeit_us        = ls_rec-duration.
+      ls_item-hana_proc_time_us  = ls_rec-hana_processing_time.
+      ls_item-hana_cpu_time_us   = ls_rec-hana_cpu_time.
+      ls_item-hana_max_memory_kb = ls_rec-hana_max_memory.
 
-      "-----------------------------------------------------------------
-      " SQL-Statement
-      " STATEMENT_WITH_NAMES: SQL mit Feldnamen (kein Datenwert → sicher speichern)
-      " STATEMENT_WITH_VALUES: SQL mit echten Werten (für Duplikat-Erkennung)
-      "-----------------------------------------------------------------
-      ls_item-sql_text     = ls_rec-statement_with_names.
-      ls_item-sql_hash     = ls_rec-hana_statement_hash.  " Fertig von SAP/HANA geliefert!
+      " --- SQL-Statement ---
+      " STATEMENT_WITH_NAMES: feldbasiert, kein Datenwert → sicher speichern
+      " STATEMENT_WITH_VALUES: für Duplikat-Erkennung (Werte vergleichen)
+      ls_item-sql_text  = ls_rec-statement_with_names.
+      ls_item-sql_hash  = ls_rec-hana_statement_hash.  " von HANA geliefert
 
-      "-----------------------------------------------------------------
-      " Tabelle / Objekt
-      " OBJECT ist STRING, bei JOINs ggf. mehrere Tabellen kommasepariert
-      "-----------------------------------------------------------------
-      ls_item-tabname      = derive_tabname(
-        iv_object    = ls_rec-object
-        iv_operation = ls_rec-operation ).
-      ls_item-objects_raw  = ls_rec-object.               " Volltext für JOIN-Analyse
+      " --- Tabelle / Objekte ---
+      " OBJECT ist STRING; bei JOINs mehrere Tabellen (z.B. "BKPF,BSEG")
+      ls_item-tabname     = derive_tabname( ls_rec-object ).
+      ls_item-objects_raw = ls_rec-object.   " Volltext für JOIN-Erkennung
 
-      "-----------------------------------------------------------------
-      " Operation und Rückkehrcode
-      "-----------------------------------------------------------------
-      ls_item-stmt_type    = ls_rec-operation.             " SELECT/INSERT/UPDATE/DELETE/OPEN CURSOR
-      ls_item-return_code  = ls_rec-return_code.
+      " --- Operation ---
+      ls_item-stmt_type   = ls_rec-operation.   " SELECT / OPEN CURSOR / INSERT ...
 
-      "-----------------------------------------------------------------
-      " Datenmenge
-      "-----------------------------------------------------------------
+      " --- Datenmenge ---
       ls_item-records_fetched = ls_rec-number_of_rows.
       ls_item-array_size      = ls_rec-array_size.
 
-      "-----------------------------------------------------------------
-      " Kontext: Programm, Transaktion, User
-      "-----------------------------------------------------------------
+      " --- Kontext ---
       ls_item-program_name = ls_rec-program.
       ls_item-transaction  = ls_rec-transaction.
       ls_item-user_name    = ls_rec-user_name.
       ls_item-wp_id        = ls_rec-wp_id.
       ls_item-wp_type      = ls_rec-wp_type.
+      ls_item-return_code  = ls_rec-return_code.
 
-      " End-to-End-Kontext (für systemübergreifende Analyse, Phase 3)
-      ls_item-epp_root_id  = ls_rec-epp_root_id.
+      " End-to-End-Kontext (Passport, für systemübergreifende Analyse)
+      ls_item-epp_root_id = ls_rec-epp_root_id.
 
-      "-----------------------------------------------------------------
-      " Zeitstempel aus Verzeichniseintrag (Trace-Start)
-      "-----------------------------------------------------------------
-      ls_item-trace_date   = is_dir_entry-start_date.
-      ls_item-trace_time   = is_dir_entry-start_time.
-      ls_item-instance_nm  = ls_rec-instance_name.
+      " --- Metadaten aus PTC_DIRECTORY ---
+      ls_item-trace_date  = is_dir_entry-start_date.
+      ls_item-trace_time  = is_dir_entry-start_time.
+      ls_item-instance_nm = ls_rec-instance_name.
 
-      "-----------------------------------------------------------------
-      " Abgeleitete Felder für Analyse-Engine
-      "-----------------------------------------------------------------
-      ls_item-has_where    = check_has_where( ls_rec-statement_with_names ).
-
-      " Custom Code: Z* / Y* Namensraum
-      IF ls_rec-program(1) = 'Z' OR ls_rec-program(1) = 'Y'.
-        ls_item-is_custom_code = abap_true.
-      ENDIF.
+      " --- Abgeleitete Felder für Analyse-Engine ---
+      ls_item-has_where      = check_has_where( ls_rec-statement_with_names ).
+      ls_item-is_custom_code = xsdbool(
+        ls_rec-program(1) = 'Z' OR ls_rec-program(1) = 'Y' ).
 
       APPEND ls_item TO rt_items.
       lv_seq += 1.
@@ -237,15 +258,15 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
 
 
   METHOD derive_tabname.
-    " OBJECT enthält bei einfachem SELECT: "BKPF"
-    " Bei JOIN: "BKPF,BSEG" oder "BKPF JOIN BSEG ON ..."
-    " Erste Tabelle als Haupttabelle, Rest in objects_raw für JOIN-Erkennung
-    DATA lv_obj TYPE string.
-    lv_obj = iv_object.
+    " OBJECT: "BKPF" → einfacher Zugriff
+    "         "BKPF,BSEG" → JOIN, erste Tabelle als Primär
+    "         "BKPF JOIN BSEG ON ..." → seltener
+    DATA(lv_obj) = CONV string( iv_object ).
     CONDENSE lv_obj.
 
-    " Komma oder Leerzeichen als Trennzeichen
-    DATA(lv_first) = substring_before( val = lv_obj sub = ',' ).
+    " Erstes Token vor Komma oder Leerzeichen
+    DATA lv_first TYPE string.
+    lv_first = substring_before( val = lv_obj sub = ',' ).
     IF lv_first IS INITIAL.
       lv_first = substring_before( val = lv_obj sub = ' ' ).
     ENDIF.
@@ -253,15 +274,15 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
       lv_first = lv_obj.
     ENDIF.
 
-    rv_tab = CONV tabname( lv_first ).
+    rv_tab = CONV tabname( to_upper( lv_first ) ).
   ENDMETHOD.
 
 
   METHOD check_has_where.
-    DATA(lv_upper) = to_upper( iv_statement ).
-    IF lv_upper CS ' WHERE ' OR lv_upper CS `\nWHERE `.
-      rv_flag = abap_true.
-    ENDIF.
+    DATA(lv_upper) = to_upper( CONV string( iv_statement ) ).
+    rv_flag = xsdbool(
+      lv_upper CS ' WHERE '  OR
+      lv_upper CP '*' && cl_abap_char_utilities=>newline && 'WHERE *' ).
   ENDMETHOD.
 
 ENDCLASS.
