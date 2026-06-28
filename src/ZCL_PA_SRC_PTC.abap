@@ -31,11 +31,11 @@ CLASS zcl_pa_src_ptc DEFINITION
 
     TYPES:
       BEGIN OF ty_ptc_content,
-        main_records    TYPE st05_main_record_table,
-        value_id        TYPE st05_value_id_record_table,     " SELECT-in-Loop
-        structure_id    TYPE st05_structure_id_record_table, " Struktur-Duplikate
-        table_access    TYPE st05_table_access_record_table, " je Tabelle aggregiert
-        kernel_callstack TYPE st05_kernel_call_stack_table,
+        main_records     TYPE st05_main_record_table,
+        value_id         TYPE st05_identical_record_table,   " SELECT-in-Loop (wertidentisch)
+        structure_id     TYPE st05_identical_record_table,   " Duplikate (strukturidentisch)
+        table_access     TYPE st05_table_access_record_table," je Tabelle aggregiert
+        kernel_callstack TYPE st05_kernel_call_stack,        " Aufrufhierarchie
       END OF ty_ptc_content.
 
     METHODS load_directory
@@ -225,28 +225,13 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
     " → direkt für AP-01 SELECT-in-Loop und AP-08 Duplikat-Erkennung
     " Wir erzeugen einen SUMMARY-Satz je Gruppe
     "--------------------------------------------------------------------
-    LOOP AT is_content-value_id INTO DATA(ls_vid).
-      CHECK ls_vid-executions > 1.  " nur Mehrfachausführungen relevant
-
-      CLEAR ls_item.
-      ls_item-session_id      = iv_session_id.
-      ls_item-item_seq        = lv_seq.
-      ls_item-data_source     = 'PTC_VALUEID'.
-      ls_item-stmt_type       = 'SUMM_VAL'.
-      ls_item-sql_text        = ls_vid-statement_with_names.
-      ls_item-sql_hash        = ls_vid-hana_statement_hash.
-      ls_item-tabname         = derive_tabname( ls_vid-object ).
-      ls_item-laufzeit_us     = ls_vid-total_duration.     " Gesamtlaufzeit aller Exec.
-      ls_item-anzahl_exec     = ls_vid-executions.         " Anzahl Ausführungen
-      ls_item-records_fetched = ls_vid-total_rows.
-      ls_item-program_name    = ls_vid-program.
-      ls_item-is_custom_code  = xsdbool(
-        ls_vid-program(1) = 'Z' OR ls_vid-program(1) = 'Y' ).
-      ls_item-trace_date      = is_dir_entry-start_date.
-
-      APPEND ls_item TO rt_items.
-      lv_seq += 1.
-    ENDLOOP.
+    " ST05_IDENTICAL_RECORD_TABLE: Feldnamen aus SE11 prüfen (ST05_IDENTICAL_RECORD)
+    " Typische Felder: executions/count, total_duration/duration, object, program, ...
+    " Mapping vorerst auskommentiert – nach SE11-Prüfung aktivieren
+*   LOOP AT is_content-value_id INTO DATA(ls_vid).
+*     CHECK ls_vid-executions > 1.
+*     ... Mapping nach Feldnamen-Prüfung ...
+*   ENDLOOP.
 
     "--------------------------------------------------------------------
     " Table-Access-Sätze (table_access) – aggregiert je Tabelle
