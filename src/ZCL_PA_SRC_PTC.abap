@@ -225,13 +225,75 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
     " → direkt für AP-01 SELECT-in-Loop und AP-08 Duplikat-Erkennung
     " Wir erzeugen einen SUMMARY-Satz je Gruppe
     "--------------------------------------------------------------------
-    " ST05_IDENTICAL_RECORD_TABLE: Feldnamen aus SE11 prüfen (ST05_IDENTICAL_RECORD)
-    " Typische Felder: executions/count, total_duration/duration, object, program, ...
-    " Mapping vorerst auskommentiert – nach SE11-Prüfung aktivieren
-*   LOOP AT is_content-value_id INTO DATA(ls_vid).
-*     CHECK ls_vid-executions > 1.
-*     ... Mapping nach Feldnamen-Prüfung ...
-*   ENDLOOP.
+    "--------------------------------------------------------------------
+    " Identische Trace-Sätze (value_id + structure_id) –
+    " ST05_IDENTICAL_RECORD enthält beide Typen im selben Tabellentyp.
+    " Unterscheidung über:
+    "   value_identical     > 0  → exakt gleicher SQL + Werte (AP-01 Loop, AP-08 Duplikat)
+    "   structure_identical > 0  → gleiche SQL-Struktur, andere Werte (strukturelle Patterns)
+    " record_numbers verlinkt zurück auf die Einzel-Trace-Sätze.
+    "--------------------------------------------------------------------
+    LOOP AT is_content-value_id INTO DATA(ls_vid).
+      CHECK ls_vid-number_of_executions > 1.
+
+      CLEAR ls_item.
+      ls_item-session_id      = iv_session_id.
+      ls_item-item_seq        = lv_seq.
+      ls_item-data_source     = COND #(
+        WHEN ls_vid-value_identical > 0 THEN 'PTC_VALUEID'
+        ELSE                                 'PTC_STRUCTID' ).
+      ls_item-stmt_type       = 'SUMM_IDENT'.
+      ls_item-sql_text        = ls_vid-statement_with_names.
+      ls_item-sql_hash        = ls_vid-hana_statement_hash.
+      ls_item-tabname         = derive_tabname( ls_vid-object ).
+      ls_item-objects_raw     = ls_vid-object.
+
+      " Laufzeit: Gesamtzeit = duration (Summe aller Ausführungen)
+      ls_item-laufzeit_us     = ls_vid-duration.
+      ls_item-anzahl_exec     = ls_vid-number_of_executions.
+      ls_item-records_fetched = ls_vid-number_of_rows.
+
+      " Durchschnittswerte – besonders aussagekräftig für Loop-Erkennung
+      ls_item-avg_duration_us = ls_vid-duration_per_execution.
+      ls_item-avg_rows        = ls_vid-rows_per_execution.
+
+      " HANA-Dimensionen
+      ls_item-hana_proc_time_us  = ls_vid-hana_processing_time.
+      ls_item-hana_cpu_time_us   = ls_vid-hana_cpu_time.
+      ls_item-hana_max_memory_kb = ls_vid-hana_max_memory.
+
+      " Tabelleninfo (für Puffer- und Architektur-Analyse)
+      ls_item-buffer_type    = ls_vid-buffer_type.
+      ls_item-tabclass       = ls_vid-tabclass.
+
+      ls_item-trace_date     = is_dir_entry-start_date.
+
+      APPEND ls_item TO rt_items.
+      lv_seq += 1.
+    ENDLOOP.
+
+    " Structure-ID-Sätze separat durchlaufen
+    LOOP AT is_content-structure_id INTO DATA(ls_sid).
+      CHECK ls_sid-number_of_executions > 1.
+
+      CLEAR ls_item.
+      ls_item-session_id      = iv_session_id.
+      ls_item-item_seq        = lv_seq.
+      ls_item-data_source     = 'PTC_STRUCTID'.
+      ls_item-stmt_type       = 'SUMM_STRUCT'.
+      ls_item-sql_text        = ls_sid-statement_with_names.
+      ls_item-sql_hash        = ls_sid-hana_statement_hash.
+      ls_item-tabname         = derive_tabname( ls_sid-object ).
+      ls_item-laufzeit_us     = ls_sid-duration.
+      ls_item-anzahl_exec     = ls_sid-number_of_executions.
+      ls_item-records_fetched = ls_sid-number_of_rows.
+      ls_item-avg_duration_us = ls_sid-duration_per_execution.
+      ls_item-avg_rows        = ls_sid-rows_per_execution.
+      ls_item-trace_date      = is_dir_entry-start_date.
+
+      APPEND ls_item TO rt_items.
+      lv_seq += 1.
+    ENDLOOP.
 
     "--------------------------------------------------------------------
     " Table-Access-Sätze (table_access) – aggregiert je Tabelle
