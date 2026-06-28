@@ -26,6 +26,18 @@ CLASS zcl_pa_src_ptc DEFINITION
       IMPORTING
         iv_trace_type TYPE st05_trace_type DEFAULT 'SQL'.
 
+    " Öffentliche Mapping-Methode – wird direkt vom Report aufgerufen
+    METHODS map_raw_to_items
+      IMPORTING
+        it_main        TYPE st05_main_record_table
+        it_value_id    TYPE st05_identical_record_table
+        it_struct_id   TYPE st05_identical_record_table
+        it_tbl_access  TYPE st05_table_access_record_table
+        iv_session_id  TYPE sysuuid_x16
+        is_dir_entry   TYPE ptc_directory
+      RETURNING
+        VALUE(rt_items) TYPE zif_pa_detector=>tt_items.
+
   PRIVATE SECTION.
     DATA mv_trace_type TYPE st05_trace_type.
 
@@ -82,6 +94,20 @@ CLASS zcl_pa_src_ptc IMPLEMENTATION.
 
   METHOD zif_pa_data_source~get_source_type.
     rv_type = 'PTC'.
+  ENDMETHOD.
+
+  METHOD map_raw_to_items.
+    " Delegiert an die interne Mapping-Methode
+    DATA ls_content TYPE ty_ptc_content.
+    ls_content-main_records     = it_main.
+    ls_content-value_id         = it_value_id.
+    ls_content-structure_id     = it_struct_id.
+    ls_content-table_access     = it_tbl_access.
+
+    rt_items = map_to_trace_items(
+      is_content    = ls_content
+      iv_session_id = iv_session_id
+      is_dir_entry  = is_dir_entry ).
   ENDMETHOD.
 
   METHOD zif_pa_data_source~fetch.
